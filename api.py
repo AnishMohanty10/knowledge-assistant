@@ -66,7 +66,7 @@ class QueryRequest(BaseModel):
     query: str
     history: List[Message] = []
 
-@app.get("/health")
+@app.get("/api/health")
 def health_check():
     """Performs lightweight liveness and database diagnostics."""
     count = 0
