@@ -7,7 +7,8 @@ export default function Sidebar({
   createNewChat,
   isSidebarOpen,
   toggleSidebar,
-  openUploadPanel
+  openUploadPanel,
+  logout
 }) {
   return (
     <div style={{
@@ -102,6 +103,28 @@ export default function Sidebar({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
             Upload docs
           </button>
+
+          {logout && (
+            <button
+              onClick={logout}
+              style={{
+                width: '100%',
+                padding: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                fontSize: '14px',
+                color: 'var(--text-2)',
+                borderRadius: '6px',
+                marginTop: '10px'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-3)'; e.currentTarget.style.color = 'var(--text-1)' }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = 'var(--text-2)' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              Log Out
+            </button>
+          )}
         </div>
       </div>
     </div>
