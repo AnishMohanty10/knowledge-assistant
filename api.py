@@ -67,15 +67,8 @@ class QueryRequest(BaseModel):
     history: List[Message] = []
 
 @app.get("/api/health")
-def health_check():
-    """Performs lightweight liveness and database diagnostics."""
-    count = 0
-    try:
-        collection = chroma_client.get_or_create_collection(name="knowledge_base")
-        count = collection.count()
-    except Exception:
-        pass
-    return {"status": "ok", "chunks": count, "version": "1.0.0"}
+def health():
+    return {"status": "ok"}
 
 @app.post("/api/query")
 def query_knowledge_base(request: QueryRequest):

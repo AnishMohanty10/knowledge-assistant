@@ -14,7 +14,7 @@ export default function UploadPanel({ onClose }) {
     files.forEach(f => formData.append('files', f))
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "https://knowledge-assistant-production-7dbf.up.railway.app";
+      const API_URL = import.meta.env.VITE_API_URL;
       const response = await fetch(`${API_URL}/api/ingest`, {
         method: 'POST',
         body: formData
@@ -38,7 +38,7 @@ export default function UploadPanel({ onClose }) {
     setLoading(true);
     setStatus("Erasing vector database and internal files...");
     try {
-        const API_URL = import.meta.env.VITE_API_URL || "https://knowledge-assistant-production-7dbf.up.railway.app";
+        const API_URL = import.meta.env.VITE_API_URL;
         const response = await fetch(`${API_URL}/api/uploads?reset_db=true`, {
             method: 'DELETE'
         });
