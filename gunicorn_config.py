@@ -5,7 +5,7 @@ workers = 1
 threads = 2
 
 worker_class = "uvicorn.workers.UvicornWorker"
-bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
+bind = None
 
 # Stability
 timeout = 120
