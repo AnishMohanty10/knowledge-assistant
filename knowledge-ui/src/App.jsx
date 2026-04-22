@@ -1,3 +1,4 @@
+// main app 
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatWindow from './components/ChatWindow'
