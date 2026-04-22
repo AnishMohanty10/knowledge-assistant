@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import shutil
 from ingestion import load_documents, chunk_documents, ingest_to_chromadb
 from retriever import get_relevant_chunks
 from llm import ask_llm
@@ -31,6 +32,17 @@ with tab1:
             status_text = st.empty()
             
             try:
+                # Prevent state staleness by wiping existing uploads
+                for filename in os.listdir(UPLOAD_DIR):
+                    file_path = os.path.join(UPLOAD_DIR, filename)
+                    try:
+                        if os.path.isfile(file_path) or os.path.islink(file_path):
+                            os.unlink(file_path)
+                        elif os.path.isdir(file_path):
+                            shutil.rmtree(file_path)
+                    except Exception as e:
+                        print(f"Failed to delete {file_path}. Reason: {e}")
+                
                 # Save uploaded files
                 status_text.text("Saving uploaded files...")
                 for file in uploaded_files:

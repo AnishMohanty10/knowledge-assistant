@@ -1,30 +1,101 @@
+"""Module for loading, chunking, and ingesting documents into ChromaDB."""
 import os
-import glob
-import time
+import json
+import hashlib
+import logging
 import argparse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
-import hashlib
-import uuid
-import requests
-from dotenv import load_dotenv
+from utils import get_embedding
 
-load_dotenv()
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+logger = logging.getLogger(__name__)
 
-HF_API_TOKEN = os.getenv("HF_TOKEN") or os.getenv("HF_API_TOKEN")
-API_URL = "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5"
+INGESTED_REGISTRY_PATH = "./chroma_db/ingested_files.json"
 
-def load_documents(folder_path: str) -> List[Dict[str, Any]]:
-    """Recursively reads all .pdf, .txt, .md files from a folder."""
+def load_registry() -> Dict[str, str]:
+    """Loads the registry of previously ingested files.
+    
+    Returns:
+        Dictionary mapping filenames to their SHA-256 hashes.
+    """
+    if os.path.exists(INGESTED_REGISTRY_PATH):
+        try:
+            with open(INGESTED_REGISTRY_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load registry: {e}")
+    return {}
+
+def save_registry(registry: Dict[str, str]) -> None:
+    """Saves the ingested file registry.
+    
+    Args:
+        registry: The dictionary mapping filenames to SHA-256 hashes.
+    """
+    os.makedirs(os.path.dirname(INGESTED_REGISTRY_PATH), exist_ok=True)
+    with open(INGESTED_REGISTRY_PATH, "w", encoding="utf-8") as f:
+        json.dump(registry, f, indent=4)
+
+def compute_sha256(file_path: str) -> str:
+    """Computes the SHA-256 hash of a file.
+    
+    Args:
+        file_path: The absolute or relative path to the file.
+        
+    Returns:
+        The SHA-256 hex string.
+    """
+    sha256 = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+def clear_uploads(folder_path: str) -> None:
+    """Safely deletes all files within the data/uploads directory.
+    
+    Args:
+        folder_path: Path to the uploads folder.
+    """
+    import shutil
+    if not os.path.exists(folder_path):
+        return
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            logger.error(f"Failed to delete {file_path}. Reason: {e}")
+
+def load_documents(folder_path: str, registry: Dict[str, str]) -> Tuple[List[Dict[str, Any]], Dict[str, str]]:
+    """Reads available files, checking against the SHA-256 registry.
+    
+    Args:
+        folder_path: Path containing the documents.
+        registry: Current file hash registry.
+        
+    Returns:
+        A tuple of (loaded_documents, updated_registry).
+    """
     documents = []
     if not os.path.exists(folder_path):
-        return documents
+        return documents, registry
         
     for root, _, files in os.walk(folder_path):
         for file in files:
             file_path = os.path.join(root, file)
+            file_hash = compute_sha256(file_path)
+            
+            if file in registry and registry[file] == file_hash:
+                logger.info(f"Skipping {file} - already ingested and unmodified.")
+                continue
+            
             if file.lower().endswith(".pdf"):
                 try:
                     reader = PdfReader(file_path)
@@ -35,8 +106,9 @@ def load_documents(folder_path: str) -> List[Dict[str, Any]]:
                                 "text": text,
                                 "metadata": {"source": file, "page": i + 1}
                             })
+                    registry[file] = file_hash
                 except Exception as e:
-                    print(f"Error reading PDF {file}: {e}")
+                    logger.error(f"Error reading PDF {file}: {e}")
             elif file.lower().endswith((".txt", ".md")):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
@@ -46,13 +118,21 @@ def load_documents(folder_path: str) -> List[Dict[str, Any]]:
                                 "text": text,
                                 "metadata": {"source": file}
                             })
+                    registry[file] = file_hash
                 except Exception as e:
-                    print(f"Error reading text file {file}: {e}")
-    return documents
+                    logger.error(f"Error reading text file {file}: {e}")
+    return documents, registry
 
 def chunk_documents(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Chunks documents using RecursiveCharacterTextSplitter and deduplicates them."""
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    """Splits documents into smaller semantic chunks.
+    
+    Args:
+        documents: A list of dicts containing text and metadata.
+        
+    Returns:
+        List of chunk dictionaries.
+    """
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = []
     seen_texts = set()
     
@@ -71,42 +151,18 @@ def chunk_documents(documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 })
     return chunks
 
-def get_embeddings_batch(texts: List[str]) -> List[List[float]]:
-    """Calls Hugging Face Inference API to get a batch of embeddings."""
-    if not HF_API_TOKEN:
-        print("Error: HF_TOKEN environment variable is not set.")
-        return []
-        
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    payload = {"inputs": texts}
+def ingest_to_chromadb(chunks: List[Dict[str, Any]]) -> Tuple[int, str]:
+    """Embeds each chunk and upserts securely into ChromaDB.
     
-    for _ in range(5):
-        try:
-            response = requests.post(API_URL, headers=headers, json=payload)
-            if response.status_code == 200:
-                embeds = response.json()
-                if isinstance(embeds, list) and len(embeds) > 0:
-                    if isinstance(embeds[0], list):
-                        return embeds
-                    elif isinstance(embeds[0], float):
-                        return [embeds]
-                return []
-            elif response.status_code == 503 or response.status_code == 429:
-                time.sleep(3)
-                continue
-            else:
-                response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            if response.status_code not in (503, 429):
-                print(f"HTTP error occurred: {e}")
-                return []
-        except Exception as e:
-            print(f"Error fetching embeddings: {e}")
-            return []
-    return []
-
-def ingest_to_chromadb(chunks: List[Dict[str, Any]]) -> tuple[int, str]:
-    """Embeds each chunk and upserts into ChromaDB 'knowledge_base' collection."""
+    Args:
+        chunks: List of document chunks.
+        
+    Returns:
+        Tuple mapping (number of chunks ingested, status message).
+    """
+    if not chunks:
+        return 0, "No new chunks provided to ingest."
+        
     try:
         client = chromadb.PersistentClient(path="./chroma_db")
         collection = client.get_or_create_collection(name="knowledge_base")
@@ -123,20 +179,18 @@ def ingest_to_chromadb(chunks: List[Dict[str, Any]]) -> tuple[int, str]:
             batch_chunks = chunks[i:i + batch_size]
             batch_texts = [chunk["text"] for chunk in batch_chunks]
             
-            batch_embeddings = get_embeddings_batch(batch_texts)
+            batch_embeddings = get_embedding(batch_texts)
             if not batch_embeddings or len(batch_embeddings) != len(batch_texts):
-                print(f"Warning: Failed to get embeddings for batch starting at {i}")
+                logger.warning(f"Failed to get embeddings for batch starting at {i}")
                 continue
                 
             for j, chunk in enumerate(batch_chunks):
                 texts.append(chunk["text"])
                 
-                # Ensure metadata has 'source' and 'page'/'chunk_index' without nested or weird types
                 meta = chunk["metadata"]
                 clean_meta = {}
                 for k, v in meta.items():
                     if v is not None:
-                        # ChromaDB metadata values must be str, int, float, or bool
                         if isinstance(v, (str, int, float, bool)):
                             clean_meta[k] = v
                         else:
@@ -144,14 +198,17 @@ def ingest_to_chromadb(chunks: List[Dict[str, Any]]) -> tuple[int, str]:
                 
                 metadatas.append(clean_meta)
                 
-                # Generate a unique hash for the ID
-                chunk_hash = hashlib.md5(chunk["text"].encode('utf-8')).hexdigest()
-                ids.append(f"doc_{chunk_hash}")
+                # Deterministic ID generation to prevent ghost accumulation
+                source_filename = clean_meta.get("source", "unknown")
+                chunk_index = clean_meta.get("chunk_index", 0)
+                chunk_hash_input = f"{source_filename}_{chunk_index}_{chunk['text'][:40]}".encode('utf-8')
+                deterministic_id = hashlib.md5(chunk_hash_input).hexdigest()
+                
+                ids.append(f"doc_{deterministic_id}")
                 embeddings.append(batch_embeddings[j])
                 count += 1
 
         if ids:
-            # Batch upsert into ChromaDB
             MAX_UPSERT = 100
             for i in range(0, len(ids), MAX_UPSERT):
                 collection.upsert(
@@ -162,28 +219,45 @@ def ingest_to_chromadb(chunks: List[Dict[str, Any]]) -> tuple[int, str]:
                 )
             return count, "Success"
         else:
-            return 0, "No valid chunks to embed."
+            return 0, "No valid chunks embedded."
 
     except Exception as e:
+        logger.error(f"Error saving to ChromaDB: {e}")
         return 0, f"Error: {e}"
 
+def process_upload_folder(folder_path: str) -> Tuple[int, str]:
+    """Wraps ingestion tasks for an entire folder and updates the registry.
+    
+    Args:
+        folder_path: Path containing documents.
+        
+    Returns:
+        Tuple mapping (ingested row count, final status info).
+    """
+    registry = load_registry()
+    docs, new_registry = load_documents(folder_path, registry)
+    if not docs:
+        clear_uploads(folder_path)
+        return 0, "No new unseen documents found."
+        
+    chunks = chunk_documents(docs)
+    num, status = ingest_to_chromadb(chunks)
+    
+    if num > 0:
+        save_registry(new_registry)
+        
+    clear_uploads(folder_path)
+    return num, status
+
 def main():
-    """Orchestrates the full data ingestion pipeline from the command line."""
+    """CLI orchestrator for the data ingestion pipeline."""
     parser = argparse.ArgumentParser(description="Ingest documents to local vector store.")
     parser.add_argument("folder_path", type=str, help="Folder containing .pdf, .txt, .md files")
     args = parser.parse_args()
     
-    print(f"Loading documents from {args.folder_path}...")
-    docs = load_documents(args.folder_path)
-    print(f"Found {len(docs)} documents/pages.")
-    
-    print("Chunking documents...")
-    chunks = chunk_documents(docs)
-    print(f"Generated {len(chunks)} chunks.")
-    
-    print("Ingesting to ChromaDB...")
-    num_ingested, status = ingest_to_chromadb(chunks)
-    print(f"Ingestion result: {status}. Total ingested chunks: {num_ingested}.")
+    logger.info(f"Loading documents from {args.folder_path}...")
+    num_ingested, status = process_upload_folder(args.folder_path)
+    logger.info(f"Ingestion result: {status}. Total ingested chunks: {num_ingested}.")
 
 if __name__ == "__main__":
     main()
