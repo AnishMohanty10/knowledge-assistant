@@ -85,14 +85,12 @@ def ask_llm(query: str, chunks: List[Dict[str, Any]], chat_history: List[Dict[st
         return {"answer": "I don't have information about that in your uploaded documents.", "sources": [], "grounded": True}
         
     try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            api_key = os.getenv("HF_TOKEN")
+        token = os.getenv("HF_TOKEN")
         
-        if not api_key:
-            return {"answer": "Error: Valid API key is missing.", "sources": [], "grounded": False}
+        if not token:
+            return {"answer": "Error: Valid HF_TOKEN is missing.", "sources": [], "grounded": False}
             
-        client = InferenceClient(api_key=api_key)
+        client = InferenceClient(token=token)
         messages = build_prompt(query, chunks, chat_history)
         
         # Robust Generation Request
