@@ -2,6 +2,7 @@ services:
   - type: web
     name: knowledge-assistant
     runtime: python
+    pythonVersion: "3.11.0"
     buildCommand: pip install -r requirements.txt
     startCommand: bash start.sh
     envVars:
