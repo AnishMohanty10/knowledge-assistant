@@ -1,4 +1,3 @@
 #!/bin/bash
 set -e
-echo "Starting Knowledge Assistant API..."
-exec gunicorn api:app -c gunicorn_config.py
+exec gunicorn api:app -c gunicorn_config.py --bind 0.0.0.0:${PORT:-8000}
