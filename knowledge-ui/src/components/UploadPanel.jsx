@@ -14,8 +14,8 @@ export default function UploadPanel({ onClose }) {
     files.forEach(f => formData.append('files', f))
 
     try {
-      const BASE_URL = import.meta.env.VITE_API_URL || '';
-      const response = await fetch(`${BASE_URL}/api/ingest`, {
+      const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
+      const response = await fetch(`${API_URL}/api/ingest`, {
         method: 'POST',
         body: formData
       })
@@ -38,8 +38,8 @@ export default function UploadPanel({ onClose }) {
     setLoading(true);
     setStatus("Erasing vector database and internal files...");
     try {
-        const BASE_URL = import.meta.env.VITE_API_URL || '';
-        const response = await fetch(`${BASE_URL}/api/uploads?reset_db=true`, {
+        const API_URL = import.meta.env.VITE_API_URL || window.location.origin;
+        const response = await fetch(`${API_URL}/api/uploads?reset_db=true`, {
             method: 'DELETE'
         });
         if (response.ok) {

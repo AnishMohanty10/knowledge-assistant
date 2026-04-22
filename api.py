@@ -169,10 +169,23 @@ def get_status():
     except Exception as e:
         return {"total_chunks": 0, "ready": False, "error": str(e)}
 
+from fastapi.responses import FileResponse
+
 if os.path.exists("static"):
-    try:
-        app.mount("/", StaticFiles(directory="static", html=True), name="static")
-    except Exception as e:
-        logger.warning(f"Failed to mount static folder: {e}")
+    if os.path.exists("static/assets"):
+        app.mount("/assets", StaticFiles(directory="static/assets"), name="assets")
+        
+    @app.get("/")
+    def serve_frontend():
+        return FileResponse("static/index.html")
+        
+    @app.get("/{file_path:path}")
+    def serve_static(file_path: str):
+        if file_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file = os.path.join("static", file_path)
+        if os.path.exists(file) and os.path.isfile(file):
+            return FileResponse(file)
+        return FileResponse("static/index.html")
 else:
     logger.warning("static folder not found. Running purely as API mode.")
