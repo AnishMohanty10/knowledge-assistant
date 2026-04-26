@@ -1,60 +1,41 @@
-# AI-Powered Personal Knowledge Assistant
+Knowledge Assistant (RAG Chatbot)
 
-This project implements an end-to-end Retrieval-Augmented Generation (RAG) pipeline to ingest documents (PDF, Markdown, Text) and enable intelligent, context-aware querying using a local vector database. It leverages Hugging Face's Inference API for generating embeddings, ChromaDB for local vector storage, and OpenAI's GPT-3.5-Turbo for producing accurate, cited answers via a Streamlit user interface.
+A Retrieval-Augmented Generation (RAG) based chatbot that provides accurate, context-aware answers from a custom knowledge base using modern LLM workflows.
 
-## Setup Instructions
+Live Demo: https://knowledge-assistant-pi.vercel.app/
 
-1. Clone the repository to your local machine.
-2. Create and activate a Python virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows, use `venv\Scripts\activate`
-   ```
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Create a `.env` file based on `.env.example` and fill in your actual API keys:
-   ```bash
-   cp .env.example .env
-   # Make sure to edit .env to insert your OPENAI_API_KEY
-   ```
+Overview
 
-## How to Ingest Documents
+This project implements a RAG-powered chatbot that retrieves relevant information from a knowledge base and uses it to generate precise responses.
 
-You can ingest documents either via the Streamlit UI or using the Command Line Interface (CLI):
+Unlike traditional chatbots that rely only on pretrained knowledge, this system fetches context dynamically before generating answers, improving accuracy and reducing hallucinations.
 
-```bash
-# Ingest all files from a specific folder
-python ingestion.py ./data/uploads/
-```
+Features
+Context-aware responses using RAG
+Query-based retrieval from knowledge base
+Reduced hallucinations through grounded answers
+Real-time chat interface
+Scalable architecture for custom datasets
+Admin/knowledge management capability (if implemented)
+How It Works
 
-## How to Run the App
+The system follows a standard RAG pipeline:
 
-Start the new React web application and FastAPI backend with the following commands:
+User submits a query
+Relevant data is retrieved from the knowledge base
+Retrieved context is passed to the LLM
+LLM generates a grounded response
 
-```bash
-# Terminal 1: Start frontend
-cd knowledge-ui && npm install && npm run dev
+RAG improves reliability by combining retrieval + generation instead of relying solely on model memory.
 
-# Terminal 2: Start backend
-uvicorn api:app --reload --port 8000
-```
-
-*(Legacy Streamlit UI is still available via `streamlit run app.py`)*
-
-## Folder Structure Diagram
-
-```text
-├── .env                  # Environment variables (do not commit)
-├── .env.example          # Example environment variables template
-├── app.py                # Streamlit UI
-├── chroma_db/            # Local ChromaDB persistent storage (auto-generated)
-├── data/
-│   └── uploads/          # Directory for uploaded documents (auto-generated)
-├── ingestion.py          # Document loading, chunking, and embedding logic
-├── llm.py                # OpenAI interaction and prompt building
-├── README.md             # Project documentation
-├── requirements.txt      # Python dependencies
-└── retriever.py          # ChromaDB querying logic
-```
+Tech Stack
+Frontend: React / Next.js
+Backend: API routes / server functions
+AI Layer: LLM (OpenAI / OpenRouter / etc.)
+Retrieval: Vector search / document-based retrieval
+Deployment: Vercel
+Use Cases
+Documentation assistants
+Customer support chatbots
+Internal knowledge base tools
+AI-powered Q&A systems
